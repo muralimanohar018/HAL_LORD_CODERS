@@ -4,6 +4,7 @@ Inference utility for CampusShield scam detection model.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -40,15 +41,34 @@ def _load_artifacts() -> tuple[Any, Any]:
     return model, vectorizer
 
 
+@lru_cache(maxsize=1)
+def _get_artifacts() -> tuple[Any, Any]:
+    """
+    Cache loaded artifacts in memory to avoid reloading on every request.
+    """
+    return _load_artifacts()
+
+
 def predict_scam(text: str) -> float:
     """
     Return scam probability for class 1.
     """
-    model, vectorizer = _load_artifacts()
+    model, vectorizer = _get_artifacts()
     cleaned = clean_text(text)
     features = vectorizer.transform([cleaned])
     probability = model.predict_proba(features)[0][1]
     return float(probability)
+
+
+def predict_scam_batch(texts: list[str]) -> list[float]:
+    """
+    Return scam probabilities for a batch of messages.
+    """
+    model, vectorizer = _get_artifacts()
+    cleaned_texts = [clean_text(text) for text in texts]
+    features = vectorizer.transform(cleaned_texts)
+    probabilities = model.predict_proba(features)[:, 1]
+    return [float(prob) for prob in probabilities]
 
 
 if __name__ == "__main__":

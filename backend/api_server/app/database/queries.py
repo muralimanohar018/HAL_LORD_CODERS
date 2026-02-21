@@ -14,7 +14,7 @@ def create_scan(
     original_text: str | None,
     extracted_text: str | None,
     ml_score: float,
-    final_score: int,
+    risk_score: int,
     risk_level: str,
 ) -> Scan:
     scan = Scan(
@@ -22,7 +22,7 @@ def create_scan(
         original_text=original_text,
         extracted_text=extracted_text,
         ml_score=ml_score,
-        final_score=final_score,
+        risk_score=risk_score,
         risk_level=risk_level,
     )
     try:
@@ -39,7 +39,7 @@ def list_scans_for_user(db: Session, user_id: UUID, limit: int = 100) -> Sequenc
     return (
         db.query(Scan)
         .filter(Scan.user_id == user_id)
-        .order_by(desc(Scan.created_at))
+        .order_by(desc(Scan.checked_at))
         .limit(limit)
         .all()
     )

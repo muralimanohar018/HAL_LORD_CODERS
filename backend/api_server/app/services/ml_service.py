@@ -6,6 +6,50 @@ from fastapi import HTTPException, status
 from app.core.config import get_settings
 
 
+def _normalize_ml_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    # New schema from hybrid service.
+    if "ml_scam_probability" in payload:
+        return payload
+
+    # Legacy schema from older deployed service.
+    if "scam_probability" in payload:
+        probability = float(payload.get("scam_probability", 0.0))
+        is_scam = bool(payload.get("is_scam", False))
+        risk_level = str(payload.get("risk_level", "low")).upper()
+        model_version = str(payload.get("model_version", "unknown"))
+        threshold = float(payload.get("threshold", 0.7))
+
+        return {
+            "model_version": model_version,
+            "ml_scam_probability": probability,
+            "ml_is_scam": is_scam,
+            "security": {
+                "urls_found": [],
+                "company_inferred": "",
+                "company_verification_status": "not_provided",
+                "behavior_warnings": [],
+                "email_warnings": [],
+                "domain_warnings": [],
+                "whois_warnings": [],
+                "security_risk_score": 0,
+            },
+            "urls_found": [],
+            "company_inferred": None,
+            "company_verification_status": "not_provided",
+            "behavior_warnings": [],
+            "email_warnings": [],
+            "domain_warnings": [],
+            "whois_warnings": [],
+            "security_risk_score": 0,
+            "final_risk_level": risk_level,
+            "decision_thresholds": {
+                "legacy": {"ml_probability_gte": threshold}
+            },
+        }
+
+    return payload
+
+
 async def analyze_text_with_ml(extracted_text: str) -> dict[str, Any]:
     settings = get_settings()
 
@@ -16,8 +60,13 @@ async def analyze_text_with_ml(extracted_text: str) -> dict[str, Any]:
         )
 
     try:
+        payload = {"text": str(extracted_text).strip()}
         async with httpx.AsyncClient(timeout=settings.ml_timeout_seconds) as client:
-            response = await client.post(settings.ml_api_url, json={"text": extracted_text})
+            response = await client.post(
+                settings.ml_api_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -54,4 +103,4 @@ async def analyze_text_with_ml(extracted_text: str) -> dict[str, Any]:
             detail="ML response must be a JSON object",
         )
 
-    return payload
+    return _normalize_ml_payload(payload)

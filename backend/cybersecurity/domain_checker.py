@@ -87,11 +87,20 @@ def check_unlisted_company(company: str) -> list[str]:
     """
     Warn when the company is not in the verified domain whitelist.
     """
+    # Kept for backward compatibility, but unknown companies are now treated as
+    # "unverified" and should not be marked fake by default.
+    return []
+
+
+def get_company_verification_status(company: str | None) -> str:
+    """
+    Return company verification status used by risk aggregation logic.
+    """
     if not company:
-        return []
+        return "not_provided"
     if company.strip().lower() in COMPANY_WHITELIST:
-        return []
-    return ["Company domain is not in verified whitelist; verify domain ownership manually"]
+        return "verified"
+    return "unverified"
 
 
 def check_company_keyword_mismatch(company: str, url: str) -> list[str]:

@@ -11,7 +11,7 @@ from .domain_checker import (
     check_company_domain,
     check_company_keyword_mismatch,
     check_free_hosting,
-    check_unlisted_company,
+    get_company_verification_status,
     get_root_domain,
 )
 from .email_analyzer import analyze_emails
@@ -41,11 +41,11 @@ def _score_from_warnings(
     score += len(domain_warnings) * 20
 
     for warning in whois_warnings:
-        if warning.startswith("High risk"):
+        if "High risk" in warning:
             score += 30
-        elif warning.startswith("Suspicious"):
+        elif "Suspicious" in warning:
             score += 20
-        elif warning.startswith("WHOIS lookup failed"):
+        elif "WHOIS lookup failed" in warning:
             score += 10
 
     return min(score, 100)
@@ -66,7 +66,7 @@ def analyze_security(text: str, company: str | None = None) -> dict:
     whois_warnings: list[str] = []
 
     inferred_company = company.strip().lower() if company else _infer_company_from_text(text)
-    domain_warnings.extend(check_unlisted_company(inferred_company))
+    company_verification_status = get_company_verification_status(inferred_company or None)
 
     for url in urls_found:
         root_domain = get_root_domain(url)
@@ -76,8 +76,11 @@ def analyze_security(text: str, company: str | None = None) -> dict:
         if check_free_hosting(root_domain):
             domain_warnings.append("Website hosted on free hosting platform")
 
+        # Strict official-domain checks apply only for known, whitelisted companies.
         domain_warnings.extend(check_company_domain(inferred_company, url))
-        domain_warnings.extend(check_company_keyword_mismatch(inferred_company, url))
+        # For unknown/startup companies, use weaker lexical mismatch heuristic.
+        if company_verification_status == "unverified":
+            domain_warnings.extend(check_company_keyword_mismatch(inferred_company, url))
 
         age_message = analyze_domain_age(root_domain)
         if age_message != "Safe: domain age appears legitimate":
@@ -91,6 +94,8 @@ def analyze_security(text: str, company: str | None = None) -> dict:
 
     return {
         "urls_found": urls_found,
+        "company_inferred": inferred_company or "",
+        "company_verification_status": company_verification_status,
         "email_warnings": email_warnings,
         "domain_warnings": domain_warnings,
         "whois_warnings": whois_warnings,

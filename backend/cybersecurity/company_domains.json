@@ -1,0 +1,9 @@
+{
+  "tcs": ["tcs.com"],
+  "infosys": ["infosys.com"],
+  "wipro": ["wipro.com"],
+  "accenture": ["accenture.com"],
+  "capgemini": ["capgemini.com"],
+  "ibm": ["ibm.com"],
+  "msme": ["msme.gov.in", "udyamregistration.gov.in"]
+}

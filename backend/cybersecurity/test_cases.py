@@ -23,54 +23,100 @@ from cybersecurity.campusshield_engine import analyze_message
 
 TEST_CASES = [
     {
-        "name": "Known company official domain",
+        "name": "TCS official careers page",
         "company": "tcs",
-        "text": "Apply for internship at https://www.tcs.com/careers",
+        "text": (
+            "TCS is hiring graduate trainees for 2026. "
+            "Apply through https://www.tcs.com/careers and use your college email."
+        ),
     },
     {
-        "name": "Known company free-hosting impersonation",
+        "name": "TCS impersonation on free hosting",
         "company": "tcs",
-        "text": "Apply now at https://tcs-careers.netlify.app",
+        "text": (
+            "Final shortlist released. Upload Aadhaar and pay onboarding fee today at "
+            "https://tcs-careers-verify.netlify.app."
+        ),
     },
     {
-        "name": "Known company personal email + suspicious link",
+        "name": "Infosys impersonation + personal recruiter email",
         "company": "infosys",
-        "text": "Upload documents at https://infosys-jobs.github.io contact hr.infosys@gmail.com",
+        "text": (
+            "Infosys HR team: complete verification immediately at https://infosys-jobs.github.io "
+            "and send screenshot to hr.infosys@outlook.com."
+        ),
     },
     {
-        "name": "Unknown startup legit-looking domain",
+        "name": "Unknown startup with brand-matching domain",
         "company": "Acme Labs",
-        "text": "Join us at https://acmelabs.in/careers contact hiring@acmelabs.in",
+        "text": (
+            "Acme Labs is hiring backend interns in Bengaluru. "
+            "Apply at https://acmelabs.in/careers or contact hiring@acmelabs.in."
+        ),
     },
     {
-        "name": "Unknown startup mismatched domain",
+        "name": "Unknown startup routed to unrelated job board",
         "company": "Acme Labs",
-        "text": "Acme Labs hiring: https://quick-jobs-board.com/register",
+        "text": (
+            "Acme Labs immediate joining. Confirm interest here: "
+            "https://quick-jobs-board.com/register-now."
+        ),
     },
     {
-        "name": "Urgent fee language with free hosting",
+        "name": "Wipro training-fee scam pattern",
         "company": "wipro",
-        "text": "Pay 2500 fee now and confirm at https://wipro-hiring.weebly.com",
+        "text": (
+            "Wipro selected candidates must pay Rs 2500 for mandatory training kit by 6 PM. "
+            "Submit payment proof at https://wipro-hiring.weebly.com."
+        ),
     },
     {
-        "name": "MSME official domain",
+        "name": "MSME official government portal",
         "company": "msme",
-        "text": "Official update available at https://msme.gov.in",
+        "text": (
+            "For MSME scheme circulars and announcements, check the official portal "
+            "https://msme.gov.in."
+        ),
     },
     {
-        "name": "MSME fake-looking typo domain",
+        "name": "MSME typo-domain phishing attempt",
         "company": "msme",
-        "text": "Register immediately at https://msrne-support.com",
+        "text": (
+            "Complete urgent MSME subsidy registration in 30 minutes at "
+            "https://msrne-support.com to avoid cancellation."
+        ),
     },
     {
-        "name": "No URL with personal recruiter mail",
+        "name": "IBM role shared only via personal email",
         "company": "ibm",
-        "text": "Send your CV to ibm.recruitment.team@hotmail.com for immediate joining",
+        "text": (
+            "IBM project opening in Hyderabad. Share resume and PAN card copy to "
+            "ibm.recruitment.team@hotmail.com for quick offer letter."
+        ),
     },
     {
-        "name": "No company provided, generic posting",
+        "name": "Generic campus internship message",
         "company": None,
-        "text": "Internship opportunity in Chennai. Apply by sharing resume.",
+        "text": (
+            "Software internship opportunity in Chennai for final-year students. "
+            "Send resume to official placement cell for screening."
+        ),
+    },
+    {
+        "name": "Capgemini spoofed sub-brand domain",
+        "company": "capgemini",
+        "text": (
+            "Capgemini onboarding portal is live. Verify account at "
+            "https://capgemini-careers-offer.github.io/login."
+        ),
+    },
+    {
+        "name": "Accenture official domain with corporate email",
+        "company": "accenture",
+        "text": (
+            "Accenture referral drive for 2026 batch. Details at https://www.accenture.com/in-en/careers "
+            "and queries to recruiter@accenture.com."
+        ),
     },
 ]
 
@@ -87,4 +133,3 @@ def run_tests() -> None:
 
 if __name__ == "__main__":
     run_tests()
-

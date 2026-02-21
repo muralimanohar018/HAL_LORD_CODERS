@@ -1,0 +1,10 @@
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+
+# ML artifacts and local data
+*.pkl
+*.csv
+
+# macOS
+.DS_Store

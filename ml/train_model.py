@@ -22,14 +22,14 @@ except ImportError:
 
 RANDOM_STATE = 42
 MAX_FEATURES = 5000
-TEXT_COLUMNS = ["title", "company_profile", "description", "requirements", "benefits"]
-TARGET_COLUMN = "fraudulent"
-DATASET_FILENAME = "fake_job_postings.csv"
+TEXT_COLUMN = "text"
+TARGET_COLUMN = "label"
+DATASET_FILENAME = "combined_all_datasets_training.csv"
 
 
 def load_and_prepare_data(dataset_path: Path) -> tuple[pd.Series, pd.Series]:
     """
-    Load CSV data, combine relevant text columns, and clean the combined text.
+    Load CSV data with `text,label` schema and clean text.
     """
     if not dataset_path.exists():
         raise FileNotFoundError(
@@ -38,15 +38,31 @@ def load_and_prepare_data(dataset_path: Path) -> tuple[pd.Series, pd.Series]:
 
     df = pd.read_csv(dataset_path)
 
-    missing_columns = [col for col in TEXT_COLUMNS + [TARGET_COLUMN] if col not in df.columns]
+    missing_columns = [col for col in [TEXT_COLUMN, TARGET_COLUMN] if col not in df.columns]
     if missing_columns:
-        raise ValueError(f"Missing required columns in dataset: {missing_columns}")
+        raise ValueError(
+            f"Missing required columns in dataset: {missing_columns}. "
+            "Expected schema: `text,label`."
+        )
 
-    combined_text = df[TEXT_COLUMNS].fillna("").agg(" ".join, axis=1)
-    cleaned_text = combined_text.apply(clean_text)
-    labels = df[TARGET_COLUMN].astype(int)
+    texts = df[TEXT_COLUMN].fillna("").astype(str).apply(clean_text)
+    labels = pd.to_numeric(df[TARGET_COLUMN], errors="coerce")
+    if labels.isna().any():
+        raise ValueError("Column `label` contains non-numeric values.")
+    labels = labels.astype(int)
 
-    return cleaned_text, labels
+    invalid_labels = sorted(set(labels.unique()) - {0, 1})
+    if invalid_labels:
+        raise ValueError(f"Column `label` must contain only 0/1, found: {invalid_labels}")
+
+    valid_rows = texts.str.len() > 0
+    texts = texts[valid_rows].reset_index(drop=True)
+    labels = labels[valid_rows].reset_index(drop=True)
+
+    if texts.empty:
+        raise ValueError("No usable rows found after cleaning. Check dataset content.")
+
+    return texts, labels
 
 
 def train_model() -> None:
@@ -60,7 +76,7 @@ def train_model() -> None:
 
     texts, labels = load_and_prepare_data(dataset_path)
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, _ = train_test_split(
         texts,
         labels,
         test_size=0.2,

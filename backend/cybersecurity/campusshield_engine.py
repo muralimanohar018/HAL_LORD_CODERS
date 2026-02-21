@@ -17,13 +17,19 @@ if str(PROJECT_ROOT) not in sys.path:
 from ml.predict import predict_scam  # noqa: E402
 
 
+ML_HIGH_THRESHOLD = 0.85
+ML_MEDIUM_THRESHOLD = 0.65
+SECURITY_HIGH_THRESHOLD = 60
+SECURITY_MEDIUM_THRESHOLD = 30
+
+
 def _final_risk_level(ml_prob: float, security_score: int) -> str:
     """
     Final decision thresholds.
     """
-    if ml_prob >= 0.75 or security_score >= 60:
+    if ml_prob >= ML_HIGH_THRESHOLD or security_score >= SECURITY_HIGH_THRESHOLD:
         return "HIGH"
-    if ml_prob >= 0.45 or security_score >= 30:
+    if ml_prob >= ML_MEDIUM_THRESHOLD or security_score >= SECURITY_MEDIUM_THRESHOLD:
         return "MEDIUM"
     return "LOW"
 
@@ -43,8 +49,14 @@ def analyze_message(text: str, company: str | None = None) -> dict:
         "security": security_result,
         "final_risk_level": final_level,
         "decision_thresholds": {
-            "high": {"ml_probability_gte": 0.75, "security_risk_score_gte": 60},
-            "medium": {"ml_probability_gte": 0.45, "security_risk_score_gte": 30},
+            "high": {
+                "ml_probability_gte": ML_HIGH_THRESHOLD,
+                "security_risk_score_gte": SECURITY_HIGH_THRESHOLD,
+            },
+            "medium": {
+                "ml_probability_gte": ML_MEDIUM_THRESHOLD,
+                "security_risk_score_gte": SECURITY_MEDIUM_THRESHOLD,
+            },
         },
     }
 
@@ -55,4 +67,3 @@ if __name__ == "__main__":
         "https://tcs-career-portal.netlify.app contact tcs.hr.jobs@gmail.com"
     )
     print(analyze_message(sample, company="tcs"))
-

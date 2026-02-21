@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import warnings
 from datetime import datetime, timezone
 
 try:
@@ -46,7 +47,12 @@ def get_domain_age(domain: str) -> int:
 
     try:
         # Suppress noisy stdout/stderr from whois/socket internals.
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore", ResourceWarning)
             result = whois.whois(domain)
         creation_date = _normalize_datetime(getattr(result, "creation_date", None))
         if creation_date is None:

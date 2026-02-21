@@ -1,0 +1,50 @@
+{
+  "dataset_path": "/Users/muralimanoharmga/Documents/New project/combined_all_datasets_training.csv",
+  "model_path": "/Users/muralimanoharmga/Documents/New project/model.pkl",
+  "vectorizer_path": "/Users/muralimanoharmga/Documents/New project/vectorizer.pkl",
+  "samples_total": 43653,
+  "samples_test": 8731,
+  "accuracy": 0.984881,
+  "classification_report": {
+    "0": {
+      "precision": 0.9654961832061069,
+      "recall": 0.9940270355234203,
+      "f1-score": 0.9795539033457249,
+      "support": 3181.0
+    },
+    "1": {
+      "precision": 0.9965175953079178,
+      "recall": 0.9796396396396396,
+      "f1-score": 0.9880065418862438,
+      "support": 5550.0
+    },
+    "accuracy": 0.9848814568777918,
+    "macro avg": {
+      "precision": 0.9810068892570123,
+      "recall": 0.9868333375815299,
+      "f1-score": 0.9837802226159844,
+      "support": 8731.0
+    },
+    "weighted avg": {
+      "precision": 0.9852154406983815,
+      "recall": 0.9848814568777918,
+      "f1-score": 0.9849269584253125,
+      "support": 8731.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      3162,
+      19
+    ],
+    [
+      113,
+      5437
+    ]
+  ],
+  "split": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "stratified": true
+  }
+}

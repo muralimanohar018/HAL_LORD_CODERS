@@ -7,6 +7,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from .config import load_engine_config
 from .risk_aggregator import analyze_security
 
 # Ensure project root is importable when called from backend runtime contexts.
@@ -16,20 +17,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from ml.predict import predict_scam  # noqa: E402
 
-
-ML_HIGH_THRESHOLD = 0.85
-ML_MEDIUM_THRESHOLD = 0.65
-SECURITY_HIGH_THRESHOLD = 60
-SECURITY_MEDIUM_THRESHOLD = 30
+ENGINE_CONFIG = load_engine_config()
+MODEL_VERSION = ENGINE_CONFIG["model_version"]
+THRESHOLDS = ENGINE_CONFIG["thresholds"]
 
 
 def _final_risk_level(ml_prob: float, security_score: int) -> str:
     """
     Final decision thresholds.
     """
-    if ml_prob >= ML_HIGH_THRESHOLD or security_score >= SECURITY_HIGH_THRESHOLD:
+    if ml_prob >= THRESHOLDS["ml_high"] or security_score >= THRESHOLDS["security_high"]:
         return "HIGH"
-    if ml_prob >= ML_MEDIUM_THRESHOLD or security_score >= SECURITY_MEDIUM_THRESHOLD:
+    if ml_prob >= THRESHOLDS["ml_medium"] or security_score >= THRESHOLDS["security_medium"]:
         return "MEDIUM"
     return "LOW"
 
@@ -44,18 +43,19 @@ def analyze_message(text: str, company: str | None = None) -> dict:
     final_level = _final_risk_level(ml_probability, security_score)
 
     return {
+        "model_version": MODEL_VERSION,
         "ml_scam_probability": round(float(ml_probability), 6),
-        "ml_is_scam": ml_probability >= 0.50,
+        "ml_is_scam": ml_probability >= THRESHOLDS["ml_is_scam"],
         "security": security_result,
         "final_risk_level": final_level,
         "decision_thresholds": {
             "high": {
-                "ml_probability_gte": ML_HIGH_THRESHOLD,
-                "security_risk_score_gte": SECURITY_HIGH_THRESHOLD,
+                "ml_probability_gte": THRESHOLDS["ml_high"],
+                "security_risk_score_gte": THRESHOLDS["security_high"],
             },
             "medium": {
-                "ml_probability_gte": ML_MEDIUM_THRESHOLD,
-                "security_risk_score_gte": SECURITY_MEDIUM_THRESHOLD,
+                "ml_probability_gte": THRESHOLDS["ml_medium"],
+                "security_risk_score_gte": THRESHOLDS["security_medium"],
             },
         },
     }

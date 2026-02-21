@@ -1,0 +1,11 @@
+{
+  "model_version": "campusshield-hybrid-v2.1",
+  "thresholds": {
+    "ml_high": 0.85,
+    "ml_medium": 0.65,
+    "ml_is_scam": 0.5,
+    "security_high": 60,
+    "security_medium": 30
+  }
+}
+

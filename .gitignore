@@ -5,6 +5,8 @@ __pycache__/
 # ML artifacts and local data
 *.pkl
 *.csv
+!model.pkl
+!vectorizer.pkl
 
 # macOS
 .DS_Store

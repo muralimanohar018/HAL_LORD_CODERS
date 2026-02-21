@@ -11,6 +11,8 @@ class Settings(BaseModel):
     supabase_url: str
     supabase_service_key: str
     database_url: str
+    ml_api_url: str = "http://127.0.0.1:8001/predict"
+    ml_timeout_seconds: float = 15.0
 
     @property
     def supabase_user_url(self) -> str:
@@ -23,6 +25,8 @@ def get_settings() -> Settings:
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_service_key=os.getenv("SUPABASE_SERVICE_KEY", ""),
         database_url=os.getenv("DATABASE_URL", ""),
+        ml_api_url=os.getenv("ML_API_URL", "http://127.0.0.1:8001/predict"),
+        ml_timeout_seconds=float(os.getenv("ML_TIMEOUT_SECONDS", "15")),
     )
 
     missing = []

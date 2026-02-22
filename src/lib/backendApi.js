@@ -1,6 +1,7 @@
 import { getAccessToken, refreshAccessToken } from "./supabaseClient";
 
 const backendBaseUrl = (import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const requestTimeoutMs = Number(import.meta.env.VITE_BACKEND_TIMEOUT_MS || 20000);
 
 export class BackendApiError extends Error {
   constructor(message, status, payload = null) {
@@ -42,10 +43,23 @@ async function parsePayload(response) {
 }
 
 async function doFetch(path, init, token) {
-  return fetch(`${backendBaseUrl}${path}`, {
-    ...init,
-    headers: buildHeaders(init.headers, token),
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), requestTimeoutMs);
+
+  try {
+    return await fetch(`${backendBaseUrl}${path}`, {
+      ...init,
+      headers: buildHeaders(init.headers, token),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new BackendApiError("Backend connectivity issue", 0);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 async function fetchWithAuth(path, init = {}) {
@@ -53,7 +67,10 @@ async function fetchWithAuth(path, init = {}) {
   let response;
   try {
     response = await doFetch(path, init, token);
-  } catch {
+  } catch (error) {
+    if (error instanceof BackendApiError) {
+      throw error;
+    }
     throw new BackendApiError("Backend connectivity issue", 0);
   }
 
@@ -62,7 +79,10 @@ async function fetchWithAuth(path, init = {}) {
     if (refreshedToken) {
       try {
         response = await doFetch(path, init, refreshedToken);
-      } catch {
+      } catch (error) {
+        if (error instanceof BackendApiError) {
+          throw error;
+        }
         throw new BackendApiError("Backend connectivity issue", 0);
       }
     }
@@ -83,12 +103,8 @@ async function fetchWithAuth(path, init = {}) {
 }
 
 async function fetchWithoutAuth(path, init = {}) {
-  const headers = new Headers(init.headers || {});
   try {
-    const response = await fetch(`${backendBaseUrl}${path}`, {
-      ...init,
-      headers,
-    });
+    const response = await doFetch(path, init, null);
     const payload = await parsePayload(response);
     if (!response.ok) {
       throw new BackendApiError(

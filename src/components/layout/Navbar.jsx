@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
+import { clearCachedAuth, supabase } from "../../lib/supabaseClient";
 
 const navLinks = [
   { path: "/", label: "Home" },
@@ -20,7 +20,7 @@ export default function Navbar({ user = { name: "Student", role: "Campus Member"
         await supabase.auth.signOut();
       }
     } finally {
-      localStorage.removeItem("campusshield-auth");
+      clearCachedAuth();
       navigate("/login", { replace: true });
     }
   };

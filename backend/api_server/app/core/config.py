@@ -13,6 +13,8 @@ class Settings(BaseModel):
     database_url: str
     ml_api_url: str = "http://127.0.0.1:8001/predict"
     ml_timeout_seconds: float = 15.0
+    dev_bypass_auth: bool = False
+    dev_user_id: str = "00000000-0000-0000-0000-000000000001"
 
     @property
     def supabase_user_url(self) -> str:
@@ -30,6 +32,8 @@ def get_settings() -> Settings:
             os.getenv("ML_ENDPOINT", "http://127.0.0.1:8001/predict"),
         ),
         ml_timeout_seconds=float(os.getenv("ML_TIMEOUT_SECONDS", "15")),
+        dev_bypass_auth=os.getenv("DEV_BYPASS_AUTH", "false").strip().lower() in {"1", "true", "yes", "on"},
+        dev_user_id=os.getenv("DEV_USER_ID", "00000000-0000-0000-0000-000000000001").strip(),
     )
 
     missing = []

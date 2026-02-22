@@ -13,6 +13,15 @@ async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     settings: Settings = Depends(get_settings),
 ) -> UUID:
+    if settings.dev_bypass_auth:
+        try:
+            return UUID(settings.dev_user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Invalid DEV_USER_ID configuration",
+            )
+
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

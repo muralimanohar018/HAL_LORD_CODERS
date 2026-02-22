@@ -1,7 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
+import { BackendApiError, fetchScanHistory } from "../lib/backendApi";
+import { getAccessToken } from "../lib/supabaseClient";
 
 const historyData = [
   {
@@ -46,7 +49,8 @@ const getRisk = (score) => {
 };
 
 export default function HistoryPage() {
-  const savedHistory = (() => {
+  const navigate = useNavigate();
+  const localHistory = (() => {
     try {
       const parsed = JSON.parse(localStorage.getItem("campusshield-history") || "[]");
       return Array.isArray(parsed) && parsed.length ? parsed : historyData;
@@ -54,9 +58,78 @@ export default function HistoryPage() {
       return historyData;
     }
   })();
+  const [savedHistory, setSavedHistory] = useState(localHistory);
+  const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("");
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadHistory() {
+      setLoading(true);
+      setStatusMessage("");
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          if (!mounted) return;
+          setStatusMessage("Please log in to view cloud scan history.");
+          setSavedHistory(localHistory);
+          navigate("/login");
+          return;
+        }
+
+        const rows = await fetchScanHistory(100);
+        if (!mounted) return;
+        if (!Array.isArray(rows)) {
+          setStatusMessage("Unexpected history response format. Showing local history.");
+          setSavedHistory(localHistory);
+          return;
+        }
+
+        const mapped = rows.map((scan) => ({
+          id: String(scan.id || `CS-${Date.now().toString().slice(-4)}`),
+          company: "CampusShield Scan",
+          role: (scan.original_text || scan.extracted_text || "Recruitment message").slice(0, 64),
+          score: Number.isFinite(scan.final_score)
+            ? Math.round(scan.final_score)
+            : Number.isFinite(scan.ml_score)
+            ? Math.round(scan.ml_score * 100)
+            : 0,
+          finalRiskLevel: String(scan.risk_level || "").toUpperCase() || undefined,
+          modelVersion: "tfidf-logreg-v1",
+          date: scan.created_at ? new Date(scan.created_at).toLocaleString() : "Unknown date",
+          type: scan.original_text ? "Text Message" : "OCR/File",
+          summary: scan.extracted_text
+            ? scan.extracted_text.slice(0, 120)
+            : "No summary available",
+        }));
+
+        setSavedHistory(mapped.length ? mapped : localHistory);
+        if (!mapped.length) {
+          setStatusMessage("No server history yet. Showing local history.");
+        }
+      } catch (error) {
+        if (!mounted) return;
+        if (error instanceof BackendApiError && error.status === 401) {
+          setStatusMessage("Session expired. Please log in again.");
+          navigate("/login");
+        } else {
+          setStatusMessage("Could not fetch backend history. Showing local history.");
+        }
+        setSavedHistory(localHistory);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    loadHistory();
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
 
   const filtered = useMemo(() => {
     return savedHistory.filter((item) => {
@@ -81,6 +154,13 @@ export default function HistoryPage() {
           <h1 className="display-6 fw-bold text-light mb-1">Scan History</h1>
           <p className="text-secondary mb-0">Review previously analyzed job and internship offers.</p>
         </motion.section>
+
+        {loading && (
+          <div className="alert alert-info py-2 mb-3 small">Loading history from backend...</div>
+        )}
+        {statusMessage && (
+          <div className="alert alert-warning py-2 mb-3 small">{statusMessage}</div>
+        )}
 
         <section className="row g-2 mb-3">
           <div className="col-md-6">

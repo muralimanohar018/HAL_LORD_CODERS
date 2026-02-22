@@ -150,3 +150,10 @@ export async function checkBackendHealth() {
     latencyMs,
   };
 }
+
+export async function fetchScanHistory(limit = 100) {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.round(limit))) : 100;
+  return fetchWithAuth(`/history?limit=${safeLimit}`, {
+    method: "GET",
+  });
+}

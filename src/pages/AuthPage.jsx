@@ -6,7 +6,6 @@ import Footer from "../components/layout/Footer";
 import {
   cacheAuthenticatedUser,
   clearCachedAuth,
-  getCachedUserId,
   isSupabaseConfigured,
   supabase,
 } from "../lib/supabaseClient";
@@ -26,9 +25,11 @@ const inputStyle = {
 export default function AuthPage() {
   const [mode, setMode] = useState("login");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -69,6 +70,46 @@ export default function AuthPage() {
   }, []);
 
   const update = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  const emailRedirectTo = `${window.location.origin}/login`;
+
+  const getReadableAuthError = (rawMessage, authMode) => {
+    const message = String(rawMessage || "").toLowerCase();
+    if (!message) return authMode === "login" ? "Login failed." : "Signup failed.";
+
+    if (message.includes("invalid login credentials")) {
+      return "Invalid email/password. If you just registered, verify your email first.";
+    }
+    if (message.includes("email not confirmed")) {
+      return "Email not verified. Open the verification link from your inbox, then sign in.";
+    }
+    if (message.includes("user already registered")) {
+      return "Account already exists. Please sign in.";
+    }
+    if (message.includes("password should be at least")) {
+      return "Password must be at least 6 characters.";
+    }
+    return rawMessage;
+  };
+
+  const resendVerificationEmail = async () => {
+    if (!supabase || !pendingVerificationEmail) return;
+    setResending(true);
+    setError("");
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingVerificationEmail,
+        options: { emailRedirectTo },
+      });
+      if (resendError) {
+        setError(getReadableAuthError(resendError.message, "register") || "Could not resend verification email.");
+        return;
+      }
+      setInfo(`Verification email sent to ${pendingVerificationEmail}.`);
+    } finally {
+      setResending(false);
+    }
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -119,13 +160,14 @@ export default function AuthPage() {
         });
 
         if (signInError) {
-          setError(signInError.message || "Login failed.");
+          setError(getReadableAuthError(signInError.message, "login") || "Login failed.");
           return;
         }
 
         if (signInData?.user) {
           cacheAuthenticatedUser(signInData.user);
         }
+        setPendingVerificationEmail("");
         navigate("/dashboard", { replace: true });
         return;
       }
@@ -135,11 +177,12 @@ export default function AuthPage() {
         password: form.password,
         options: {
           data: { name: form.name.trim() },
+          emailRedirectTo,
         },
       });
 
       if (signUpError) {
-        setError(signUpError.message || "Signup failed.");
+        setError(getReadableAuthError(signUpError.message, "register") || "Signup failed.");
         return;
       }
 
@@ -148,16 +191,14 @@ export default function AuthPage() {
       }
 
       if (data.session) {
+        setPendingVerificationEmail("");
         navigate("/dashboard", { replace: true });
         return;
       }
 
-      const userId = data?.user?.id || getCachedUserId();
-      setInfo(
-        userId
-          ? `Registration successful. User ID: ${userId}. Please verify your email, then log in.`
-          : "Registration successful. Please verify your email, then log in.",
-      );
+      setPendingVerificationEmail(form.email.trim());
+      setInfo("Registration successful. Please verify your email, then sign in.");
+      setForm((prev) => ({ ...prev, password: "", confirm: "" }));
       setMode("login");
     } finally {
       setLoading(false);
@@ -339,6 +380,16 @@ export default function AuthPage() {
                     <div className="alert alert-info py-2 mb-0 rounded-3 small">
                       {info}
                     </div>
+                  )}
+                  {pendingVerificationEmail && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-info rounded-3 py-2"
+                      onClick={resendVerificationEmail}
+                      disabled={resending}
+                    >
+                      {resending ? "Sending..." : "Resend verification email"}
+                    </button>
                   )}
 
                   <button

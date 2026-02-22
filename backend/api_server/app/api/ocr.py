@@ -1,22 +1,19 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_id
 from app.database.connection import get_db
 from app.services.ml_service import analyze_text_with_ml
+from app.services.ocr_service import extract_text_from_upload
 from app.services.scan_service import create_scan_from_ml
 
-router = APIRouter(tags=["analysis"])
+router = APIRouter(tags=["ocr"])
 
 
-class AnalyzeRequest(BaseModel):
-    text: str
-
-
-class AnalyzeResponse(BaseModel):
+class OCRAnalyzeResponse(BaseModel):
     processed_text: str
     source: str
     model_version: str | None = None
@@ -37,27 +34,21 @@ class AnalyzeResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-@router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(
-    payload: AnalyzeRequest,
+@router.post("/ocr/extract", response_model=OCRAnalyzeResponse)
+async def ocr_extract(
+    file: UploadFile = File(..., description="Upload image or PDF"),
     user_id: UUID = Depends(get_current_user_id),
     db: Session = Depends(get_db),
-) -> AnalyzeResponse:
-    cleaned_text = payload.text.strip()
-    if not cleaned_text:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="`text` is required",
-        )
-
-    ml_response = await analyze_text_with_ml(cleaned_text)
+) -> OCRAnalyzeResponse:
+    extracted_text = await extract_text_from_upload(file)
+    ml_response = await analyze_text_with_ml(extracted_text)
 
     create_scan_from_ml(
         db=db,
         user_id=user_id,
-        original_text=cleaned_text,
-        extracted_text=cleaned_text,
+        original_text=None,
+        extracted_text=extracted_text,
         ml_response=ml_response,
     )
 
-    return AnalyzeResponse(processed_text=cleaned_text, source="text", **ml_response)
+    return OCRAnalyzeResponse(processed_text=extracted_text, source="file", **ml_response)

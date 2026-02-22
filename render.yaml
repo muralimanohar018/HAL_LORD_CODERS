@@ -22,3 +22,5 @@ services:
         value: "60"
       - key: CORS_ALLOW_ORIGINS
         value: "*"
+      - key: PYTHON_VERSION
+        value: 3.11.11

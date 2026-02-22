@@ -1,38 +1,54 @@
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, UploadFile
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_current_user_id
+from app.database.connection import get_db
+from app.services.ml_service import analyze_text_with_ml
 from app.services.ocr_service import extract_text_from_upload
+from app.services.scan_service import create_scan_from_ml
 
 router = APIRouter(tags=["ocr"])
 
 
-class OCRExtractResponse(BaseModel):
-    extracted_text: str
+class OCRAnalyzeResponse(BaseModel):
+    processed_text: str
     source: str
+    model_version: str | None = None
+    ml_scam_probability: float
+    ml_is_scam: bool
+    security: dict
+    urls_found: list[str]
+    company_inferred: str | None = None
+    company_verification_status: str | None = None
+    behavior_warnings: list[str]
+    email_warnings: list[str]
+    domain_warnings: list[str]
+    whois_warnings: list[str]
+    security_risk_score: int
+    final_risk_level: str
+    decision_thresholds: dict
+
+    model_config = ConfigDict(extra="allow")
 
 
-@router.post("/ocr/extract", response_model=OCRExtractResponse)
+@router.post("/ocr/extract", response_model=OCRAnalyzeResponse)
 async def ocr_extract(
-    text: str | None = Form(default=None, description="Plain text input from frontend"),
-    file: UploadFile | None = File(default=None, description="Upload image or PDF"),
-) -> OCRExtractResponse:
-    has_text = bool(text and text.strip())
-    has_file = file is not None
+    file: UploadFile = File(..., description="Upload image or PDF"),
+    user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> OCRAnalyzeResponse:
+    extracted_text = await extract_text_from_upload(file)
+    ml_response = await analyze_text_with_ml(extracted_text)
 
-    if not has_text and not has_file:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Provide either `text` or `file`",
-        )
+    create_scan_from_ml(
+        db=db,
+        user_id=user_id,
+        original_text=None,
+        extracted_text=extracted_text,
+        ml_response=ml_response,
+    )
 
-    if has_text and has_file:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Provide only one input source: `text` or `file`",
-        )
-
-    if has_text:
-        return OCRExtractResponse(extracted_text=text.strip(), source="text")  # type: ignore[union-attr]
-
-    extracted_text = await extract_text_from_upload(file)  # type: ignore[arg-type]
-    return OCRExtractResponse(extracted_text=extracted_text, source="file")
+    return OCRAnalyzeResponse(processed_text=extracted_text, source="file", **ml_response)

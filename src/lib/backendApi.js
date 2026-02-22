@@ -124,3 +124,29 @@ export async function analyzeFile(file) {
 export function getBackendBaseUrl() {
   return backendBaseUrl;
 }
+
+export async function checkBackendHealth() {
+  const start = Date.now();
+  const response = await fetch(`${backendBaseUrl}/health`, { method: "GET" });
+  const latencyMs = Date.now() - start;
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new BackendApiError(
+      extractErrorMessage(payload, `Health check failed (${response.status})`),
+      response.status,
+      payload,
+    );
+  }
+
+  return {
+    payload,
+    latencyMs,
+  };
+}

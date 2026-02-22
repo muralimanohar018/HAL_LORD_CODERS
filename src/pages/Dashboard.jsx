@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
-import { analyzeFile, analyzeText, BackendApiError, getBackendBaseUrl } from "../lib/backendApi";
-import { getAccessToken, isSupabaseConfigured } from "../lib/supabaseClient";
+import { analyzeFile, analyzeText, BackendApiError, checkBackendHealth, getBackendBaseUrl } from "../lib/backendApi";
+import { getAccessToken, getCachedUserId, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const reasonsByScore = (score) => {
   if (score >= 61) {
@@ -105,6 +105,8 @@ export default function Dashboard() {
   const [result, setResult] = useState(null);
   const [authPrompt, setAuthPrompt] = useState("");
   const [apiError, setApiError] = useState("");
+  const [backendStatus, setBackendStatus] = useState({ state: "checking", latencyMs: null });
+  const [activeEndpoint, setActiveEndpoint] = useState("");
 
   const metrics = useMemo(() => {
     if (!result) return [40, 42, 45, 38];
@@ -112,6 +114,30 @@ export default function Dashboard() {
     const base = result.score;
     return [base, Math.max(0, base - 10), Math.max(0, base - 5), Math.max(0, base - 15)];
   }, [result]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function pingBackend() {
+      setBackendStatus({ state: "checking", latencyMs: null });
+      try {
+        const { payload, latencyMs } = await checkBackendHealth();
+        if (!mounted) return;
+        setBackendStatus({
+          state: payload?.status === "ok" ? "connected" : "unknown",
+          latencyMs,
+        });
+      } catch {
+        if (!mounted) return;
+        setBackendStatus({ state: "disconnected", latencyMs: null });
+      }
+    }
+
+    pingBackend();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const runScan = async () => {
     if (inputType === "text" && !message.trim()) return;
@@ -131,6 +157,7 @@ export default function Dashboard() {
 
     setAuthPrompt("");
     setApiError("");
+    setActiveEndpoint(inputType === "text" ? "/analyze" : "/ocr/extract");
     setScanning(true);
     setResult(null);
     try {
@@ -300,6 +327,21 @@ export default function Dashboard() {
                 <p className="small text-secondary mt-2 mb-0">
                   Backend: <span className="text-light">{getBackendBaseUrl()}</span>
                 </p>
+                <p className="small text-secondary mt-1 mb-0">
+                  Backend health:{" "}
+                  <span className="text-light">
+                    {backendStatus.state}
+                    {typeof backendStatus.latencyMs === "number" ? ` (${backendStatus.latencyMs} ms)` : ""}
+                  </span>
+                </p>
+                <p className="small text-secondary mt-1 mb-0">
+                  User ID: <span className="text-light">{getCachedUserId() || "not available"}</span>
+                </p>
+                {activeEndpoint && (
+                  <p className="small text-secondary mt-1 mb-0">
+                    Last endpoint used: <span className="text-light">{activeEndpoint}</span>
+                  </p>
+                )}
               </div>
             </div>
 

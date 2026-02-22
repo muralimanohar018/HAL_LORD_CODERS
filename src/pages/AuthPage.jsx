@@ -3,7 +3,13 @@ import { motion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
-import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import {
+  cacheAuthenticatedUser,
+  clearCachedAuth,
+  getCachedUserId,
+  isSupabaseConfigured,
+  supabase,
+} from "../lib/supabaseClient";
 
 const panelStyle = {
   background: "linear-gradient(160deg, rgba(255,255,255,0.98), rgba(248,249,253,0.96))",
@@ -44,6 +50,23 @@ export default function AuthPage() {
       cancelled = true;
     };
   }, [navigate]);
+
+  useEffect(() => {
+    if (!supabase) return () => {};
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user || null;
+      if (user) {
+        cacheAuthenticatedUser(user);
+      } else {
+        clearCachedAuth();
+      }
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   const update = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -90,7 +113,7 @@ export default function AuthPage() {
 
     try {
       if (mode === "login") {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: form.email.trim(),
           password: form.password,
         });
@@ -100,7 +123,9 @@ export default function AuthPage() {
           return;
         }
 
-        localStorage.setItem("campusshield-auth", "true");
+        if (signInData?.user) {
+          cacheAuthenticatedUser(signInData.user);
+        }
         navigate("/dashboard", { replace: true });
         return;
       }
@@ -118,13 +143,21 @@ export default function AuthPage() {
         return;
       }
 
+      if (data?.user) {
+        cacheAuthenticatedUser(data.user);
+      }
+
       if (data.session) {
-        localStorage.setItem("campusshield-auth", "true");
         navigate("/dashboard", { replace: true });
         return;
       }
 
-      setInfo("Registration successful. Please verify your email, then log in.");
+      const userId = data?.user?.id || getCachedUserId();
+      setInfo(
+        userId
+          ? `Registration successful. User ID: ${userId}. Please verify your email, then log in.`
+          : "Registration successful. Please verify your email, then log in.",
+      );
       setMode("login");
     } finally {
       setLoading(false);

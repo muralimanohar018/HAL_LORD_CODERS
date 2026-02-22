@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 
+# Node / frontend build artifacts
+node_modules/
+dist/
+
 # ML artifacts and local data
 *.pkl
 *.csv

@@ -77,6 +77,7 @@ const mapAnalysisResponse = (apiJson, fallbackProcessedText = "") => {
     score,
     category: labelFromRiskLevel(derivedRiskLevel, score),
     finalRiskLevel: derivedRiskLevel,
+    securityRiskScore: score,
     reasons: reasons.length ? reasons : reasonsByScore(score),
     links: urls,
     modelVersion: data?.model_version || "n/a",
@@ -190,16 +191,18 @@ export default function Dashboard() {
           setAuthPrompt("Session expired or unauthorized. Please log in again.");
           navigate("/login");
         } else if (error.status === 422) {
-          setApiError(error.message || "Invalid input. Please check your text/file and try again.");
+          setApiError(error.message || "Input validation error.");
         } else if (error.status === 502) {
-          setApiError("ML service failed while processing this request. Please retry.");
+          setApiError("ML service failed");
         } else if (error.status === 503) {
-          setApiError("Service is temporarily unavailable. Please retry in a moment.");
+          setApiError("service unavailable");
+        } else if (error.status === 0) {
+          setApiError("backend connectivity issue");
         } else {
           setApiError(error.message || "Backend request failed.");
         }
       } else {
-        setApiError("Network error while contacting backend.");
+        setApiError("backend connectivity issue");
       }
     } finally {
       setScanning(false);
@@ -408,6 +411,24 @@ export default function Dashboard() {
                         <div className="col-12 col-md-6">
                           <div className="border border-secondary rounded-3 p-2 small bg-dark bg-opacity-25">
                             Company: <span className="text-light">{result.companyInferred}</span> ({result.companyVerificationStatus})
+                          </div>
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <div className="border border-secondary rounded-3 p-2 small bg-dark bg-opacity-25">
+                            final_risk_level: <span className="text-light">{result.finalRiskLevel}</span>
+                          </div>
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <div className="border border-secondary rounded-3 p-2 small bg-dark bg-opacity-25">
+                            security_risk_score: <span className="text-light">{result.securityRiskScore}</span>
+                          </div>
+                        </div>
+                        <div className="col-12">
+                          <div className="border border-secondary rounded-3 p-2 small bg-dark bg-opacity-25">
+                            ml_scam_probability:{" "}
+                            <span className="text-light">
+                              {typeof result.mlProbability === "number" ? result.mlProbability.toFixed(6) : "n/a"}
+                            </span>
                           </div>
                         </div>
                         {typeof result.threshold === "number" && (

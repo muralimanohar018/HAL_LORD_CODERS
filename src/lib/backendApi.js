@@ -1,4 +1,4 @@
-import { getAccessToken } from "./supabaseClient";
+import { getAccessToken, refreshAccessToken } from "./supabaseClient";
 
 const backendBaseUrl = (import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
@@ -25,26 +25,55 @@ function extractErrorMessage(payload, fallback) {
   return fallback;
 }
 
-async function fetchWithAuth(path, init = {}) {
-  const token = await getAccessToken();
-  const headers = new Headers(init.headers || {});
+function buildHeaders(initHeaders, token) {
+  const headers = new Headers(initHeaders || {});
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  return headers;
+}
 
-  const response = await fetch(`${backendBaseUrl}${path}`, {
-    ...init,
-    headers,
-  });
-
-  let payload = null;
+async function parsePayload(response) {
   try {
-    payload = await response.json();
+    return await response.json();
   } catch {
-    payload = null;
+    return null;
+  }
+}
+
+async function doFetch(path, init, token) {
+  return fetch(`${backendBaseUrl}${path}`, {
+    ...init,
+    headers: buildHeaders(init.headers, token),
+  });
+}
+
+async function fetchWithAuth(path, init = {}) {
+  const token = await getAccessToken();
+  let response;
+  try {
+    response = await doFetch(path, init, token);
+  } catch {
+    throw new BackendApiError("Backend connectivity issue", 0);
   }
 
+  if (response.status === 401) {
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      try {
+        response = await doFetch(path, init, refreshedToken);
+      } catch {
+        throw new BackendApiError("Backend connectivity issue", 0);
+      }
+    }
+  }
+
+  const payload = await parsePayload(response);
+
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new BackendApiError("Unauthorized. Please log in again.", 401, payload);
+    }
     const defaultMessage = `Backend request failed (${response.status})`;
     const message = extractErrorMessage(payload, defaultMessage);
     throw new BackendApiError(message, response.status, payload);
@@ -53,8 +82,28 @@ async function fetchWithAuth(path, init = {}) {
   return payload;
 }
 
-function isFallbackStatus(error) {
-  return error instanceof BackendApiError && [404, 405, 415, 422].includes(error.status);
+async function fetchWithoutAuth(path, init = {}) {
+  const headers = new Headers(init.headers || {});
+  try {
+    const response = await fetch(`${backendBaseUrl}${path}`, {
+      ...init,
+      headers,
+    });
+    const payload = await parsePayload(response);
+    if (!response.ok) {
+      throw new BackendApiError(
+        extractErrorMessage(payload, `Backend request failed (${response.status})`),
+        response.status,
+        payload,
+      );
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof BackendApiError) {
+      throw error;
+    }
+    throw new BackendApiError("Backend connectivity issue", 0);
+  }
 }
 
 export async function analyzeText(text) {
@@ -63,34 +112,10 @@ export async function analyzeText(text) {
     throw new BackendApiError("Text is required", 422);
   }
 
-  try {
-    // Contract format.
-    return await fetchWithAuth("/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: trimmed }),
-    });
-  } catch (error) {
-    if (!isFallbackStatus(error)) throw error;
-  }
-
-  try {
-    // Alternate backend contract used in some CampusShield branches.
-    return await fetchWithAuth("/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ original_text: trimmed, extracted_text: trimmed }),
-    });
-  } catch (error) {
-    if (!isFallbackStatus(error)) throw error;
-  }
-
-  // Form fallback for legacy route variant.
-  const form = new FormData();
-  form.append("text", trimmed);
   return fetchWithAuth("/analyze", {
     method: "POST",
-    body: form,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: trimmed }),
   });
 }
 
@@ -102,22 +127,9 @@ export async function analyzeFile(file) {
   const contractForm = new FormData();
   contractForm.append("file", file);
 
-  try {
-    // Contract format.
-    return await fetchWithAuth("/ocr/extract", {
-      method: "POST",
-      body: contractForm,
-    });
-  } catch (error) {
-    if (!isFallbackStatus(error)) throw error;
-  }
-
-  // Legacy route fallback.
-  const fallbackForm = new FormData();
-  fallbackForm.append("file", file);
-  return fetchWithAuth("/analyze", {
+  return fetchWithAuth("/ocr/extract", {
     method: "POST",
-    body: fallbackForm,
+    body: contractForm,
   });
 }
 
@@ -127,23 +139,8 @@ export function getBackendBaseUrl() {
 
 export async function checkBackendHealth() {
   const start = Date.now();
-  const response = await fetch(`${backendBaseUrl}/health`, { method: "GET" });
+  const payload = await fetchWithoutAuth("/health", { method: "GET" });
   const latencyMs = Date.now() - start;
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  if (!response.ok) {
-    throw new BackendApiError(
-      extractErrorMessage(payload, `Health check failed (${response.status})`),
-      response.status,
-      payload,
-    );
-  }
 
   return {
     payload,

@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
+import { analyzeFile, analyzeText, BackendApiError, getBackendBaseUrl } from "../lib/backendApi";
+import { getAccessToken, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const reasonsByScore = (score) => {
   if (score >= 61) {
@@ -47,13 +49,15 @@ const labelFromRiskLevel = (level, fallbackScore) => {
   return categoryLabel(fallbackScore);
 };
 
-const mapAnalysisResponse = (apiJson) => {
-  const data = apiJson?.data || apiJson || {};
+const mapAnalysisResponse = (apiJson, fallbackProcessedText = "") => {
+  const data = apiJson?.data && typeof apiJson.data === "object" ? apiJson.data : (apiJson || {});
   const rawRiskLevel = String(data?.final_risk_level || "").toUpperCase();
   const probabilityPct = Number.isFinite(data?.ml_scam_probability)
     ? Math.round(data.ml_scam_probability * 100)
     : null;
-  const score = Number.isFinite(data?.security_risk_score)
+  const score = Number.isFinite(data?.risk_score)
+    ? Math.round(data.risk_score)
+    : Number.isFinite(data?.security_risk_score)
     ? Math.round(data.security_risk_score)
     : (probabilityPct ?? 0);
 
@@ -61,20 +65,24 @@ const mapAnalysisResponse = (apiJson) => {
   const emailWarnings = Array.isArray(data.email_warnings) ? data.email_warnings : [];
   const domainWarnings = Array.isArray(data.domain_warnings) ? data.domain_warnings : [];
   const whoisWarnings = Array.isArray(data.whois_warnings) ? data.whois_warnings : [];
-  const reasons = [...behaviorWarnings, ...emailWarnings, ...domainWarnings, ...whoisWarnings];
+  const signalWarnings = Array.isArray(data.signals) ? data.signals : [];
+  const reasons = [...behaviorWarnings, ...emailWarnings, ...domainWarnings, ...whoisWarnings, ...signalWarnings];
 
   const urls = Array.isArray(data.urls_found) ? data.urls_found : [];
   const phishing = Boolean(data?.security?.phishing);
   const companyStatus = String(data?.company_verification_status || "UNKNOWN");
+  const derivedRiskLevel = rawRiskLevel || (score >= 61 ? "HIGH" : score >= 31 ? "MEDIUM" : "LOW");
 
   return {
     score,
-    category: labelFromRiskLevel(rawRiskLevel, score),
-    finalRiskLevel: rawRiskLevel || (score >= 61 ? "HIGH" : score >= 31 ? "MEDIUM" : "LOW"),
+    category: labelFromRiskLevel(derivedRiskLevel, score),
+    finalRiskLevel: derivedRiskLevel,
     reasons: reasons.length ? reasons : reasonsByScore(score),
     links: urls,
     modelVersion: data?.model_version || "n/a",
     mlIsScam: Boolean(data?.ml_is_scam),
+    mlProbability: Number.isFinite(data?.ml_scam_probability) ? data.ml_scam_probability : null,
+    processedText: String(data?.processed_text || data?.extracted_text || fallbackProcessedText || ""),
     companyInferred: data?.company_inferred || "Unknown",
     companyVerificationStatus: companyStatus,
     metrics: [
@@ -83,7 +91,8 @@ const mapAnalysisResponse = (apiJson) => {
       phishing ? Math.max(70, score) : Math.min(100, urls.length * 18 || Math.round(score * 0.5)),
       companyStatus === "MATCH" ? 82 : companyStatus === "MISMATCH" ? 28 : 50,
     ],
-    threshold: data?.decision_thresholds?.scam_threshold,
+    threshold: data?.decision_thresholds?.scam_threshold ?? data?.decision_thresholds?.legacy?.ml_probability_gte,
+    decisionThresholds: data?.decision_thresholds || null,
   };
 };
 
@@ -95,6 +104,7 @@ export default function Dashboard() {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
   const [authPrompt, setAuthPrompt] = useState("");
+  const [apiError, setApiError] = useState("");
 
   const metrics = useMemo(() => {
     if (!result) return [40, 42, 45, 38];
@@ -106,70 +116,67 @@ export default function Dashboard() {
   const runScan = async () => {
     if (inputType === "text" && !message.trim()) return;
     if ((inputType === "screenshot" || inputType === "pdf") && !pdfFile) return;
-    const isLoggedIn = localStorage.getItem("campusshield-auth") === "true";
-    if (!isLoggedIn && inputType === "pdf") {
-      setAuthPrompt("You must log in to analyze uploaded PDF files. Please sign in first.");
+
+    if (!isSupabaseConfigured) {
+      setAuthPrompt("Supabase auth is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
       return;
     }
-    setAuthPrompt("");
-    setScanning(true);
-    setResult(null);
-    let resolvedResult;
-    try {
-      let response;
-      if (inputType === "text") {
-        response = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input_type: "text", text: message }),
-        });
-      } else {
-        const formData = new FormData();
-        formData.append("input_type", inputType);
-        formData.append("file", pdfFile);
-        response = await fetch("/api/analyze", { method: "POST", body: formData });
-      }
 
-      if (!response.ok) throw new Error(`Analyze failed: ${response.status}`);
-      const apiJson = await response.json();
-      resolvedResult = mapAnalysisResponse(apiJson);
-    } catch {
-      const score = Math.floor(Math.random() * 101);
-      resolvedResult = {
-        score,
-        category: categoryLabel(score),
-        finalRiskLevel: score >= 61 ? "HIGH" : score >= 31 ? "MEDIUM" : "LOW",
-        reasons: reasonsByScore(score),
-        links: ["careers-company-fasttrack.netlify.app", "company-jobs-portal.site/apply"],
-        modelVersion: "demo",
-        mlIsScam: score >= 61,
-        companyInferred: "Unknown",
-        companyVerificationStatus: "UNKNOWN",
-        metrics: [score, Math.max(0, score - 12), Math.max(0, score - 6), Math.max(0, score - 16)],
-      };
+    const token = await getAccessToken();
+    if (!token) {
+      setAuthPrompt("Please log in first. Your Supabase access token is required by backend.");
+      navigate("/login");
+      return;
     }
 
-    setResult(resolvedResult);
+    setAuthPrompt("");
+    setApiError("");
+    setScanning(true);
+    setResult(null);
+    try {
+      const apiJson = inputType === "text"
+        ? await analyzeText(message)
+        : await analyzeFile(pdfFile);
+      const resolvedResult = mapAnalysisResponse(apiJson, inputType === "text" ? message.trim() : "");
+      setResult(resolvedResult);
 
-    const historyItem = {
-      id: `CS-${Date.now().toString().slice(-4)}`,
-      company: inputType === "text" ? "Message Submission" : "Uploaded File",
-      role:
-        inputType === "text"
-          ? (message.trim().slice(0, 52) || "Recruiter message analysis")
-          : (pdfFile?.name || "Document analysis"),
-      score: resolvedResult.score,
-      date: new Date().toLocaleString(),
-      type: inputType === "text" ? "Text Message" : inputType === "screenshot" ? "Screenshot OCR" : "PDF Offer Letter",
-      summary: resolvedResult.reasons.join(" | "),
-      modelVersion: resolvedResult.modelVersion || "n/a",
-      finalRiskLevel: resolvedResult.finalRiskLevel || (resolvedResult.score >= 61 ? "HIGH" : resolvedResult.score >= 31 ? "MEDIUM" : "LOW"),
-    };
+      const historyItem = {
+        id: `CS-${Date.now().toString().slice(-4)}`,
+        company: inputType === "text" ? "Message Submission" : "Uploaded File",
+        role:
+          inputType === "text"
+            ? (message.trim().slice(0, 52) || "Recruiter message analysis")
+            : (pdfFile?.name || "Document analysis"),
+        score: resolvedResult.score,
+        date: new Date().toLocaleString(),
+        type: inputType === "text" ? "Text Message" : inputType === "screenshot" ? "Screenshot OCR" : "PDF Offer Letter",
+        summary: resolvedResult.reasons.join(" | "),
+        modelVersion: resolvedResult.modelVersion || "n/a",
+        finalRiskLevel: resolvedResult.finalRiskLevel || (resolvedResult.score >= 61 ? "HIGH" : resolvedResult.score >= 31 ? "MEDIUM" : "LOW"),
+      };
 
-    const existing = JSON.parse(localStorage.getItem("campusshield-history") || "[]");
-    localStorage.setItem("campusshield-history", JSON.stringify([historyItem, ...existing].slice(0, 30)));
-
-    setScanning(false);
+      const existing = JSON.parse(localStorage.getItem("campusshield-history") || "[]");
+      localStorage.setItem("campusshield-history", JSON.stringify([historyItem, ...existing].slice(0, 30)));
+    } catch (error) {
+      if (error instanceof BackendApiError) {
+        if (error.status === 401) {
+          setAuthPrompt("Session expired or unauthorized. Please log in again.");
+          navigate("/login");
+        } else if (error.status === 422) {
+          setApiError(error.message || "Invalid input. Please check your text/file and try again.");
+        } else if (error.status === 502) {
+          setApiError("ML service failed while processing this request. Please retry.");
+        } else if (error.status === 503) {
+          setApiError("Service is temporarily unavailable. Please retry in a moment.");
+        } else {
+          setApiError(error.message || "Backend request failed.");
+        }
+      } else {
+        setApiError("Network error while contacting backend.");
+      }
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleFilePick = (file) => {
@@ -279,12 +286,20 @@ export default function Dashboard() {
                     <button onClick={() => navigate("/login")} className="btn btn-sm btn-outline-warning">Go to Login</button>
                   </div>
                 )}
+                {apiError && (
+                  <div className="alert alert-danger mt-3 mb-0 py-2 small">
+                    {apiError}
+                  </div>
+                )}
 
                 {pdfFile && (
                   <p className="small text-secondary mt-2 mb-0 text-end">
                     Selected: <span className="text-light">{pdfFile.name}</span>
                   </p>
                 )}
+                <p className="small text-secondary mt-2 mb-0">
+                  Backend: <span className="text-light">{getBackendBaseUrl()}</span>
+                </p>
               </div>
             </div>
 
@@ -302,6 +317,11 @@ export default function Dashboard() {
                         <div className="text-center">
                           <div className={`display-5 fw-bold text-${levelClass(result.score)}`}>{result.score}%</div>
                           <span className={`badge text-bg-${levelClass(result.score)} mt-1`}>{result.category}</span>
+                          {typeof result.mlProbability === "number" && (
+                            <p className="small text-secondary mt-2 mb-0">
+                              ML scam probability: {Math.round(result.mlProbability * 100)}%
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex-grow-1">
@@ -330,6 +350,11 @@ export default function Dashboard() {
                       </div>
 
                       <hr className="border-secondary my-4" />
+
+                      <p className="small text-info text-uppercase mb-2">Processed Text</p>
+                      <div className="border border-secondary rounded-3 p-3 small bg-dark bg-opacity-25 mb-3">
+                        {result.processedText || "No processed text returned by backend."}
+                      </div>
 
                       <p className="small text-info text-uppercase mb-2">Technical Info</p>
                       <div className="row g-2 mb-3">
@@ -363,11 +388,15 @@ export default function Dashboard() {
 
                       <p className="small text-info text-uppercase mt-4 mb-2">Suspicious Links Detected</p>
                       <div className="d-flex flex-wrap gap-2">
-                        {result.links.map((link) => (
-                          <span key={link} className="badge text-bg-danger-subtle border border-danger-subtle text-danger">
-                            {link}
-                          </span>
-                        ))}
+                        {result.links.length > 0 ? (
+                          result.links.map((link) => (
+                            <span key={link} className="badge text-bg-danger-subtle border border-danger-subtle text-danger">
+                              {link}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="small text-secondary">No URLs found.</span>
+                        )}
                       </div>
                     </div>
                   </div>

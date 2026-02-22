@@ -1,88 +1,39 @@
-# CampusShield Frontend — Setup Guide
+# CampusShield Frontend
 
-## 📁 Project Structure
+React/Vite frontend wired to CampusShield backend contract:
+- `POST /analyze` for plain text
+- `POST /ocr/extract` for image/pdf
+- `Authorization: Bearer <supabase_access_token>` on every backend call
 
-```
-C:\campusshield\frontend\
-├── index.html
-├── package.json
-├── vite.config.js
-├── postcss.config.js
-├── tailwind.config.js
-└── src/
-    ├── main.jsx
-    ├── App.jsx
-    ├── index.css
-    ├── pages/
-    │   ├── LandingPage.jsx      ← Hero page with floating 3D cards
-    │   ├── AuthPage.jsx         ← Login + Register (glassmorphism)
-    │   ├── Dashboard.jsx        ← Main dashboard with scan + results
-    │   └── HistoryPage.jsx      ← Expandable scan history
-    └── components/
-        ├── ui/
-        │   ├── Button.jsx       ← Reusable neon glow button
-        │   ├── Card.jsx         ← 3D tilt glassmorphism card
-        │   └── RiskMeter.jsx    ← Circular + bar risk meter
-        └── layout/
-            └── Navbar.jsx       ← Fixed top navigation bar
+## Required Environment Variables
+
+Create `.env` in project root:
+
+```bash
+VITE_BACKEND_URL=https://your-backend.onrender.com
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-## 🚀 Installation Steps
+## Run Locally
 
-### Step 1: Extract files to your project folder
-Copy all files into:
-```
-C:\campusshield\frontend\
-```
-
-### Step 2: Install dependencies
-Open terminal in `C:\campusshield\frontend\` and run:
 ```bash
 npm install
-```
-
-### Step 3: Start dev server
-```bash
 npm run dev
 ```
 
-Open your browser at: **http://localhost:3000**
+## Backend Integration Notes
 
----
+- Frontend login/signup uses Supabase Auth (`@supabase/supabase-js`).
+- Access token is fetched using `supabase.auth.getSession()` before API calls.
+- Text flow sends `{ "text": "..." }` to `/analyze`.
+- File flow sends multipart `file` to `/ocr/extract`.
+- On `401`, UI redirects user to login.
+- On `422`, `502`, `503`, UI shows clear error messages.
 
-## 🎨 Pages & Routes
+## Key Files
 
-| Route        | Page           | Description                          |
-|--------------|----------------|--------------------------------------|
-| `/`          | Landing Page   | Hero with floating cards, CTAs       |
-| `/login`     | Auth Page      | Login/Register glassmorphism form    |
-| `/dashboard` | Dashboard      | Stats, AI scan input, risk result    |
-| `/history`   | History Page   | Expandable scan history with filters |
-
----
-
-## 🎨 Design System
-
-### Colors
-- **Background**: `#0F172A`
-- **Card**: `#1E293B` with glassmorphism
-- **Accent Blue**: `#3B82F6`
-- **High Risk**: `#EF4444` (red glow)
-- **Suspicious**: `#F59E0B` (amber glow)
-- **Safe**: `#10B981` (green glow)
-
-### Components
-- **Button**: Neon glow on hover, scale animation, loading state
-- **Card**: 3D mouse tilt effect, glassmorphism, hover elevation
-- **RiskMeter**: Animated circular ring with count-up, dynamic colors
-- **RiskBar**: Animated progress bar with glow
-- **Navbar**: Fixed, scroll-aware, active route indicator
-
----
-
-## 📦 Tech Stack
-- **React 18** — Functional components + hooks
-- **Tailwind CSS 3** — Utility-first with custom extensions
-- **Framer Motion 11** — All animations and transitions
-- **React Router 6** — Client-side routing
-- **Vite 5** — Lightning fast dev server + build
+- `/Users/muralimanoharmga/Documents/New project/src/lib/supabaseClient.js`
+- `/Users/muralimanoharmga/Documents/New project/src/lib/backendApi.js`
+- `/Users/muralimanoharmga/Documents/New project/src/pages/AuthPage.jsx`
+- `/Users/muralimanoharmga/Documents/New project/src/pages/Dashboard.jsx`

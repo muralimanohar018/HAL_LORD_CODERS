@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 const panelStyle = {
   background: "linear-gradient(160deg, rgba(255,255,255,0.98), rgba(248,249,253,0.96))",
@@ -21,12 +22,28 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     setMode(location.pathname === "/register" ? "register" : "login");
   }, [location.pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!supabase) return () => {};
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session) {
+        navigate("/dashboard", { replace: true });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const update = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -62,12 +79,56 @@ export default function AuthPage() {
       }
     }
 
+    if (!isSupabaseConfigured || !supabase) {
+      setError("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+      return;
+    }
+
     setError("");
+    setInfo("");
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1300));
-    setLoading(false);
-    localStorage.setItem("campusshield-auth", "true");
-    navigate("/dashboard");
+
+    try {
+      if (mode === "login") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: form.email.trim(),
+          password: form.password,
+        });
+
+        if (signInError) {
+          setError(signInError.message || "Login failed.");
+          return;
+        }
+
+        localStorage.setItem("campusshield-auth", "true");
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      const { error: signUpError, data } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: { name: form.name.trim() },
+        },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message || "Signup failed.");
+        return;
+      }
+
+      if (data.session) {
+        localStorage.setItem("campusshield-auth", "true");
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      setInfo("Registration successful. Please verify your email, then log in.");
+      setMode("login");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -239,6 +300,11 @@ export default function AuthPage() {
                   {error && (
                     <div className="alert alert-danger py-2 mb-0 rounded-3 small">
                       {error}
+                    </div>
+                  )}
+                  {info && (
+                    <div className="alert alert-info py-2 mb-0 rounded-3 small">
+                      {info}
                     </div>
                   )}
 

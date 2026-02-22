@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../../lib/supabaseClient";
 
 const navLinks = [
   { path: "/", label: "Home" },
@@ -12,6 +13,17 @@ export default function Navbar({ user = { name: "Student", role: "Campus Member"
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } finally {
+      localStorage.removeItem("campusshield-auth");
+      navigate("/login", { replace: true });
+    }
+  };
 
   return (
     <motion.nav
@@ -58,10 +70,7 @@ export default function Navbar({ user = { name: "Student", role: "Campus Member"
             <div className="d-flex align-items-center gap-2 flex-wrap">
               <span className="small text-secondary d-none d-md-inline">{user.name}</span>
               <button
-                onClick={() => {
-                  localStorage.removeItem("campusshield-auth");
-                  navigate("/login");
-                }}
+                onClick={handleLogout}
                 className="btn btn-sm btn-outline-danger"
                 type="button"
               >

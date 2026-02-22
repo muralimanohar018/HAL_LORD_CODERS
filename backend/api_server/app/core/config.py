@@ -15,6 +15,7 @@ class Settings(BaseModel):
     ml_timeout_seconds: float = 15.0
     dev_bypass_auth: bool = False
     dev_user_id: str = "00000000-0000-0000-0000-000000000001"
+    cors_allow_origins: list[str] = ["*"]
 
     @property
     def supabase_user_url(self) -> str:
@@ -23,6 +24,9 @@ class Settings(BaseModel):
 
 @lru_cache
 def get_settings() -> Settings:
+    raw_cors = os.getenv("CORS_ALLOW_ORIGINS", "*")
+    cors_allow_origins = [item.strip() for item in raw_cors.split(",") if item.strip()] or ["*"]
+
     settings = Settings(
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_service_key=os.getenv("SUPABASE_SERVICE_KEY", ""),
@@ -31,6 +35,7 @@ def get_settings() -> Settings:
         ml_timeout_seconds=float(os.getenv("ML_TIMEOUT_SECONDS", "15")),
         dev_bypass_auth=os.getenv("DEV_BYPASS_AUTH", "false").strip().lower() in {"1", "true", "yes", "on"},
         dev_user_id=os.getenv("DEV_USER_ID", "00000000-0000-0000-0000-000000000001").strip(),
+        cors_allow_origins=cors_allow_origins,
     )
 
     missing = []
